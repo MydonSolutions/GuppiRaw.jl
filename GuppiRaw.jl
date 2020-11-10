@@ -33,33 +33,7 @@ module GuppiRaw
 			return Guppi(filepath, headers, blockByteOffsets)
 		end
 	end
-
-	function readGuppiBlock(gp, bnum::Integer)
-		dimensionKeys = [
-			"NPOL",
-			"PKTNTIME",
-			"PKTNCHAN",
-			"NSTRM",
-			"NANTS"
-		]
-
-		npkts = div(gp.headers[bnum]["PIPERBLK"], gp.headers[bnum]["PKTNTIME"])
-		dimensions = [1:gp.headers[bnum][key] for key in dimensionKeys]
-		push!(dimensions, 1:npkts)
-		nbits = gp.headers[bnum]["NBITS"]
-		open(gp.filepath, "r") do fio
-			seek(fio, gp.blockByteOffsets[bnum])
-			return [readComplex!(fio, nbits) for i in CartesianIndices(Tuple(dimensions))]
-		end
-	end
-
-	function parseValueString(str)
-		ret = tryparse(Int, str)
-		ret = (ret == nothing ? tryparse(Float32, str) : ret)
-		ret = (ret == nothing ? string(str) : ret)
-		ret
-	end
-
+	
 	function readHeader!(fio::IO)
 		headerDict = GuppiHeaderDict()
 		while true
@@ -71,6 +45,37 @@ module GuppiRaw
 			headerDict[strip(parts[1])] = parseValueString(strip(parts[2]))
 		end
 		headerDict
+	end
+
+	function parseValueString(str)
+		ret = tryparse(Int, str)
+		ret = (ret == nothing ? tryparse(Float32, str) : ret)
+		ret = (ret == nothing ? string(str) : ret)
+		ret
+	end
+	
+	function readGuppiBlock(gp, bnum::Integer)
+		blockShape = calcBlockShape(gp.headers[bnum])
+		nbits = gp.headers[bnum]["NBITS"]
+		open(gp.filepath, "r") do fio
+			seek(fio, gp.blockByteOffsets[bnum])
+			return [readComplex!(fio, nbits) for i in CartesianIndices(Tuple(blockShape))]
+		end
+	end
+
+	function calcBlockShape(header::GuppiHeaderDict)
+		dimensionKeys = [
+			"NPOL",
+			"PKTNTIME",
+			"PKTNCHAN",
+			"PIPERBLK",
+			"NSTRM",
+			"NANTS"
+		]
+
+		dimensions = [1:header[key] for key in dimensionKeys]
+		dimensions[4] = 1:div(length(dimensions[4]), header["PKTNTIME"])
+		Tuple(dimensions)
 	end
 
 	function Int4(val::Integer)::Int8
