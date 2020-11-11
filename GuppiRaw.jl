@@ -7,6 +7,8 @@ module GuppiRaw
 	export readGuppiBlock
 	export writeComplex!
 	export writeHeader!
+	export calcBlockSize
+	export calcBlockShape
 
 	GuppiHeaderDict = Dict{String, Union{Int, Float32, String}}
 
@@ -23,15 +25,26 @@ module GuppiRaw
 		open(filepath, "r") do fio
 			push!(headers, readHeader!(fio))
 			blockSize = headers[1]["BLOCSIZE"] # should read per header
+			align512 = (haskey(headers[1], "DIRECTIO") ? headers[1]["DIRECTIO"] == 1 : false) # should read per header
+			@assert blockSize == GuppiRaw.calcBlockSize(headers[end])
 
 			while !eof(fio) && length(headers) < 128
+				if align512; seekAligned!(fio, 512) end
 				push!(blockByteOffsets, position(fio))
 				skip(fio, blockSize)
+				if align512; seekAligned!(fio, 512) end
 				push!(headers, readHeader!(fio))
 			end
 			println()
 			return Guppi(filepath, headers, blockByteOffsets)
 		end
+	end
+
+	function seekAligned!(fio, alignBoundary)
+		pos = position(fio)
+		offset = (pos+(alignBoundary-1)) & ~(alignBoundary-1) - pos
+		println(offset)
+		skip(fio, offset)
 	end
 	
 	function readHeader!(fio::IO)
@@ -59,9 +72,13 @@ module GuppiRaw
 		nbits = gp.headers[bnum]["NBITS"]
 		open(gp.filepath, "r") do fio
 			seek(fio, gp.blockByteOffsets[bnum])
-			return [readComplex!(fio, nbits) for i in CartesianIndices(Tuple(blockShape))]
+			return [readComplex!(fio, nbits) for i in CartesianIndices(blockShape)]
 		end
 	end
+
+	function calcBlockSize(header::GuppiHeaderDict)
+		prod(length.(calcBlockShape(header)))*header["NBITS"]*2/8 # assumes each sample is re+im
+	end 
 
 	function calcBlockShape(header::GuppiHeaderDict)
 		dimensionKeys = [
@@ -85,7 +102,7 @@ module GuppiRaw
 	function readComplex!(fio::IO, nbits)
 		if nbits == 4
 			byte = read(fio, UInt8)
-			return Int4(byte>>4) + Int4(byte)im
+			return Int4(byte>>4) + Int4(byte)im #not Int4(byte<<4)im ?? No
 		elseif nbits == 8
 			return Int8(read(fio, Int8)) + Int8(read(fio, Int8))im
 		elseif nbits == 16
