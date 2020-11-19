@@ -70,12 +70,12 @@ module GuppiRaw
 		ret
 	end
 	
-	function readGuppiBlock(gp, bnum::Integer)
+	function readGuppiBlock(gp, bnum::Integer; unsigned = true)
 		blockShape = calcBlockShape(gp.headers[bnum])
 		nbits = gp.headers[bnum]["NBITS"]
 		open(gp.filepath, "r") do fio
 			seek(fio, gp.blockByteOffsets[bnum])
-			return [readComplex!(fio, nbits) for i in CartesianIndices(blockShape)]
+			return [readComplex!(fio, nbits, unsigned=unsigned) for i in CartesianIndices(blockShape)]
 		end
 	end
 
@@ -86,9 +86,8 @@ module GuppiRaw
 	function calcBlockShape(header::GuppiHeaderDict)
 		dimensionKeys = [
 			"NPOL",
-			"PKTNTIME",
-			"PKTNCHAN",
 			"PIPERBLK",
+			"PKTNCHAN",
 			"NSTRM",
 			"NANTS"
 		]
@@ -98,7 +97,6 @@ module GuppiRaw
 		end
 
 		dimensions = [1:header[key] for key in dimensionKeys]
-		dimensions[4] = 1:div(length(dimensions[4]), header["PKTNTIME"])
 		Tuple(dimensions)
 	end
 
