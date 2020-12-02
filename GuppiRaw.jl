@@ -24,7 +24,12 @@ module GuppiRaw
 
 		open(filepath, "r") do fio
 			while !eof(fio) && length(headers) < 128
-				push!(headers, readHeader!(fio))
+				header = readHeader!(fio)
+				if header == false 
+					println("Failure to read header.")
+					return Guppi(filepath, headers, blockByteOffsets)
+				end
+				push!(headers, header)
 				blockSize = headers[1]["BLOCSIZE"]
 				align512 = (haskey(headers[1], "DIRECTIO") ? headers[1]["DIRECTIO"] == 1 : false)
 				dataSize = GuppiRaw.calcBlockSize(headers[end])
@@ -127,14 +132,13 @@ module GuppiRaw
 		end
 	end
 
-	function writeComplex!(fio::IO, c::Complex, nbits; cast4bit=false)
+	function writeComplex!(fio::IO, c::Complex, nbits)
 		if nbits == 4
 			byte = write(fio, UInt8((real(c)&0xf) << 4 + (imag(c)&0xf)))
 		elseif nbits == 8
-			mask = cast4bit ? 0x0f : 0xff
-			return write(fio, UInt8(real(c)&mask), UInt8(imag(c)&mask))
+			return write(fio, Int8(real(c)), Int8(imag(c)))
 		elseif nbits == 16
-			return write(fio, UInt16(real(c)&0xffff), UInt16(imag(c)&0xffff))
+			return write(fio, Int16(real(c)&0xffff), Int16(imag(c)&0xffff))
 		else
 			return nothing
 		end
